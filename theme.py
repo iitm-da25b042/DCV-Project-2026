@@ -132,7 +132,6 @@ def base_layout(
 
 
 def region_legend_traces(fig, regions, row=None, col=None):
-    """Add legend-only entries (colour + symbol) for each region present."""
     for r in regions:
         tr = go.Scatter(
             x=[None],

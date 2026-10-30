@@ -1,0 +1,12 @@
+# Python cache files, created automatically
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Mac system files
+.DS_Store
+
+# Local test files
+try_theme.py

@@ -3,7 +3,7 @@
 import textwrap
 import plotly.graph_objects as go
 
-BG = "#070A0F"
+BG = "#000000"
 CARD = "#171A26"
 GRID = "#232A37"
 AXIS = "#3A4354"

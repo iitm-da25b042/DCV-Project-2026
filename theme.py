@@ -1,4 +1,4 @@
-"""Theme For The Dashboard"""
+"""Theme For The Dashboard: Colours, Fonts and Layout"""
 
 import textwrap
 import plotly.graph_objects as go
@@ -57,6 +57,7 @@ def base_layout(
     margin=None,
     wrap: int = 96,
 ) -> go.Figure:
+    """Title and wrapped subtitle at the top left with legend in its own band under them"""
     t = f"<b>{title}</b>"
     lines = textwrap.wrap(subtitle, wrap) if subtitle else []
     for ln in lines:
@@ -132,6 +133,7 @@ def base_layout(
 
 
 def region_legend_traces(fig, regions, row=None, col=None):
+    """Adds legend only entries (colour and symbol) for each region"""
     for r in regions:
         tr = go.Scatter(
             x=[None],

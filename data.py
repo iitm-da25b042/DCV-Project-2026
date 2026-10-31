@@ -73,7 +73,7 @@ REGIONS = {
 REGION_OF = {s: r for r, ss in REGIONS.items() for s in ss}
 REGION_ORDER = list(REGIONS)
 
-# North East states flagged as outliers owing to high per capita spending due to small population
+# North East states flagged as outliers by DBSCAN
 FLAGGED_NE = [
     "Arunachal Pradesh",
     "Manipur",
@@ -679,7 +679,7 @@ class Bundle:
     )  # Cleaned file with imputation, derived variables and all three areas
     total: (
         pd.DataFrame
-    )  # Clean rows where Area == "Total"l, with one row per state
+    )  # Clean rows where Area == "Total", with one row per state
     imputed: (
         pd.DataFrame
     )  # True where a cell was missing in raw and filled in clean

@@ -1087,10 +1087,15 @@ def rural_urban(b, sel, ind="imr"):
             f"Increased spending does not clearly narrow the rural-urban gap ({_rho_text(s)}). The extra money is not "
             f"obviously reaching mothers and children in rural areas first."
         )
-    cap = (
-        f"Rural areas perform worse than urban ones on {_lc(lab)} in {worse} of {len(states)} states, with a "
-        f"median gap of {abs(gap.median()):.1f} {gunit}. " + tail
-    )
+        better_rural = [st for st in states if worse_gap[st] > 0]          # states where rural does better
+    if 1 <= len(better_rural) <= 3:
+        names = " and ".join([", ".join(better_rural[:-1]), better_rural[-1]] if len(better_rural) > 1
+                             else better_rural)
+        exc = f" The {'exception is' if len(better_rural) == 1 else 'exceptions are'} {names}."
+    else:
+        exc = ""
+    cap = (f"Rural areas perform worse than urban ones on {_lc(lab)} in {worse} of {len(states)} states, with a "
+           f"median gap of {abs(gap.median()):.1f} {gunit}.{exc} " + tail)
     return fig, cap
 
 
@@ -1177,9 +1182,8 @@ def outcome_spread(b, sel):
         f"Infant mortality ranges from {i1.imr:g} deaths per 1,000 live births in {i1.State} to {i2.imr:g} in "
         f"{i2.State}, over {int(i2.imr / i1.imr)} times higher. Stunting varies from {s1.stunt:g}% "
         f"({s1.State}) to {s2.stunt:g}% ({s2.State}). Anaemia, on the other hand, is prevalent everywhere: "
-        f"{t.anaem_child.median():.0f}% of young children and {t.anaem_preg.median():.0f}% of pregnant "
-        f"women are anaemic in the median state."
-    )
+           f"in half of all states at least {t.anaem_child.median():.0f}% of young children and "
+           f"{t.anaem_preg.median():.0f}% of pregnant women are anaemic.")
     return fig, cap
 
 

@@ -39,8 +39,10 @@ REGION_SYMBOLS = {
 }
 
 # Colour Scales
-SEQ = "Viridis"
+SEQ = ["#46039f", "#7201a8", "#9c179e", "#bd3786", "#d8576b",
+       "#ed7953", "#fb9f3a", "#fdca26", "#f0f921"]
 SEQ_ALT = "Cividis"
+SEQ_COUNT = ["#6b1cfb", "#981cfd", "#bf1cfd", "#dd2bfd", "#f246fe", "#fc67fd", "#fea5fd"]
 
 # Fonts
 FONT = "Inter, system-ui, sans-serif"
@@ -81,7 +83,7 @@ def base_layout(
             yanchor="top",
             yref="container",
             font=dict(family=FONT_DISPLAY, size=17, color=TEXT),
-            pad=dict(l=6, t=12),
+            pad=dict(l=6, t=16),
         ),
         height=height,
         margin=m,

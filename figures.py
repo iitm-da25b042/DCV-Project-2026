@@ -1313,3 +1313,313 @@ def sex_ratio_birth(b, sel):
         f"(foeticide). {why} Survey estimates for small states are imprecise."
     )
     return fig, cap
+
+# Tab 3: Spending vs Outcomes
+def label_any(k):
+    """Chart label for an indicator key, including the two indices."""
+    return {"outcome_idx": "Outcome Index", "care_idx": "Care Index"}.get(k, D.label_of(k))
+
+def unit_any(k):
+    """Unit for an indicator key, including the two indices."""
+    return {"outcome_idx": "0–100", "care_idx": "0–100"}.get(k, D.IND[k].unit if k in D.IND else "")
+
+def better_any(k):
+    """+1 if higher is better, -1 if lower is better (indices: higher is better)."""
+    return 1 if k in ("outcome_idx", "care_idx") else D.IND[k].better
+
+def hero_scatter(b, sel, ind="outcome_idx", area="Total", drop_flagged=False):
+    """Spending per capita (log scale) vs any indicator: region-coloured bubbles sized by population,
+    a trend line, and options for Urban/Rural figures or leaving out the six flagged NE states."""
+    d = b.clean[b.clean.Area == area].copy()
+    imp = b.imputed[b.imputed.Area == area].set_index("State")
+    d["imp"] = d.State.map(imp[ind]).fillna(False).astype(bool) if ind in imp.columns else False
+    if drop_flagged:
+        d = d[~d.flagged_ne]
+    d = d.dropna(subset=[ind])
+    s = D.spearman(d.pc, d[ind])
+    fig = go.Figure()
+    hov = (np.stack([d.State, d.pc.map(inr), d[ind].round(1), d.pop_m.round(1),
+                     np.where(d.imp, " (imputed)", "")], axis=1),
+           "<b>%{customdata[0]}</b><br>%{customdata[1]} per capita<br>" + label_any(ind)
+           + ": %{customdata[2]}%{customdata[4]}<br>%{customdata[3]} million people<extra></extra>")
+    sizeref = 2.0 * d.pop_m.max() / (46 ** 2)       # biggest state ~46 px across
+    _scatter_regions(fig, d, "pc", ind, size="pop_m", hover=hov, imputed_col="imp", sizeref=sizeref)
+    # Trend line: least squares of the indicator on log10(spending)
+    sl, ic = D.log_fit(d.pc, d[ind])
+    xs = np.logspace(np.log10(d.pc.min() * 0.92), np.log10(d.pc.max() * 1.08), 50)
+    fig.add_trace(go.Scatter(x=xs, y=ic + sl * np.log10(xs), mode="lines", name="Trend",
+                             line=dict(color=SUBTLE, width=2, dash="dash"), hoverinfo="skip"))
+    # Label the extremes: best and worst on the indicator, highest and lowest spender
+    lab = (list(d.nsmallest(1, ind).State) + list(d.nlargest(1, ind).State)
+           + list(d.nlargest(1, "pc").State) + list(d.nsmallest(1, "pc").State))
+    for nm in [x for x in dict.fromkeys(lab) if x != sel]:
+        r = d[d.State == nm].iloc[0]
+        rad = np.sqrt(r.pop_m / sizeref) / 2
+        fig.add_annotation(x=np.log10(r.pc), y=r[ind], text=nm, showarrow=True, arrowhead=0, arrowwidth=1,
+                           arrowcolor=FAINT, ax=0, ay=-(rad + 18), font=dict(size=11.5, color=SUBTLE),
+                           bgcolor=LABEL_BG)
+    if sel in set(d.State):
+        r = d[d.State == sel].iloc[0]
+        rad = np.sqrt(r.pop_m / sizeref)
+        fig.add_trace(go.Scatter(x=[r.pc], y=[r[ind]], mode="markers", showlegend=False, hoverinfo="skip",
+                                 marker=dict(size=rad + 10, color="rgba(0,0,0,0)", line=dict(color=HL, width=2.5))))
+        fig.add_annotation(x=np.log10(r.pc), y=r[ind], text=f"<b>{sel}</b>", showarrow=True, arrowhead=0,
+                           arrowwidth=1, arrowcolor=HL, ax=0, ay=-(rad / 2 + 22), font=dict(size=12, color=HL),
+                           bgcolor=LABEL_BG)
+    if d.imp.any():
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name="Hollow = imputed",
+                                 marker=dict(symbol="circle-open", size=11, color=SUBTLE)))
+    direction = "lower is better" if better_any(ind) == -1 else "higher is better"
+    sub = f"{area} figures · {direction} · bubble area = population"
+    if drop_flagged:
+        sub += " · 6 flagged north-eastern states left out"
+    name = label_any(ind) if ind in ("outcome_idx", "care_idx") else _lc(label_any(ind))
+    base_layout(fig, f"Health spending per capita vs {name}", sub, height=760)
+    _log_axis(fig)
+    fig.update_yaxes(title_text=f"{label_any(ind)} ({unit_any(ind)})")
+    fig.add_annotation(x=0.99, y=0.02, xref="paper", yref="paper", xanchor="right", yanchor="bottom", showarrow=False,
+                       text=f"Spearman {_rho_text(s)}", font=dict(family=FONT_MONO, size=12, color=TEXT),
+                       bgcolor=LABEL_BG, bordercolor=AXIS, borderpad=6)
+    unit = unit_any(ind)
+    def val(v):
+        """Value with unit"""
+        if unit == "0–100":
+            return f"{v:.1f} points"
+        return f"{v:.1f}{unit}" if unit.startswith("%") else f"{v:.1f} {unit}"
+    what = f"{name} scores" if ind in ("outcome_idx", "care_idx") else name
+    strength = "strong" if abs(s["r"]) >= 0.7 else "moderate" if abs(s["r"]) >= 0.4 else "weak"
+    good = s["r"] * better_any(ind) > 0
+    if _sig(s["p"]):
+        first = (f"States that spend more per capita have {'higher' if s['r'] > 0 else 'lower'} "
+                 f"({'better' if good else 'worse'}) {what}: a {strength} "
+                 f"{'positive' if s['r'] > 0 else 'negative'} correlation ({_rho_text(s)}).")
+    else:
+        first = f"Spending per capita is not significantly related to {name} ({_rho_text(s)})."
+    # Median value in the lowest- and highest-spending quarters, with their spending ranges
+    q = pd.qcut(d.pc, 4, labels=False, duplicates="drop")
+    lo_q, hi_q = d[q == q.min()], d[q == q.max()]
+    second = (f"The median is {val(lo_q[ind].median())} in the lowest-spending quarter of states "
+              f"({inr(lo_q.pc.min())}–{inr(lo_q.pc.max())} per capita) and {val(hi_q[ind].median())} in the "
+              f"highest-spending quarter ({inr(hi_q.pc.min())}–{inr(hi_q.pc.max())}).")
+    # Best and worst states, with what they spend
+    best = d.loc[d[ind].idxmin() if better_any(ind) == -1 else d[ind].idxmax()]
+    worst = d.loc[d[ind].idxmax() if better_any(ind) == -1 else d[ind].idxmin()]
+    third = (f"{best.State} does best ({best[ind]:.1f}) on {inr(best.pc)} per capita, while {worst.State} does "
+             f"worst ({worst[ind]:.1f}) on {inr(worst.pc)}.")
+    cap = f"{first} {second} {third}"
+    # Impact of northeastern states on results
+    if not drop_flagged:
+        rest = d[~d.flagged_ne]
+        s2 = D.spearman(rest.pc, rest[ind])
+        if _sig(s["p"]) and _sig(s2["p"]) and np.sign(s2["r"]) == np.sign(s["r"]):
+            verdict = "so the pattern holds"
+        elif _sig(s["p"]):
+            verdict = "the pattern weakens below significance"
+        elif _sig(s2["p"]):
+            verdict = "a significant link appears"
+        else:
+            verdict = "there is still no clear link"
+        cap += (f" Without the six small north-eastern states, ρ = {s2['r']:+.2f} ({fmt_p(s2['p'])}): "
+                f"{verdict}.")
+    return fig, cap
+
+def correlation_barcode(b, sel):
+    """Spearman correlation of spending with every indicator, with 95% confidence intervals."""
+    t = b.total
+    groups = [("Outcome", "Health outcomes"), ("Care", "Care received"), ("Cost & cover", "Cost and cover for families")]
+    rows = []
+    for g, _ in groups:
+        for ind in [i for i in D.INDICATORS if i.group == g and t[i.key].notna().sum() >= 10]:
+            # Flip sign where lower is better
+            s = _signed(ind.key, D.spearman(t.pc, t[ind.key]))
+            rows.append(dict(group=g, label=ind.label, **s))
+    r = pd.DataFrame(rows)
+    counts = [int((r.group == g).sum()) for g, _ in groups]
+    fig = make_subplots(rows=len(groups), cols=1, shared_xaxes=True, vertical_spacing=0.07, row_heights=counts,
+                        subplot_titles=[name for _, name in groups])
+    shown = set()
+    for i, (g, _) in enumerate(groups, start=1):
+        gg = r[r.group == g].sort_values("r")
+        for sig in (True, False):
+            h = gg[gg.p.lt(0.05) == sig]
+            if h.empty:
+                continue
+            col = TEXT if sig else NEUTRAL
+            fig.add_trace(go.Scatter(
+                x=h.r, y=h.label, mode="markers", name="Significant (p < 0.05)" if sig else "Not significant",
+                legendgroup=str(sig), showlegend=sig not in shown,
+                marker=dict(size=12, color=col if sig else "rgba(0,0,0,0)", symbol="circle",
+                            line=dict(width=2, color=col)),
+                error_x=dict(type="data", symmetric=False, array=h.hi - h.r, arrayminus=h.r - h.lo,
+                             color=col, thickness=1.4, width=0),
+                customdata=np.stack([h.p.map(fmt_p), h.n, h.lo.round(2), h.hi.round(2)], axis=1),
+                hovertemplate="<b>%{y}</b><br>ρ = %{x:+.2f} (95% CI %{customdata[2]} to %{customdata[3]})"
+                              "<br>%{customdata[0]}, n = %{customdata[1]}<extra></extra>"),
+                row=i, col=1)
+            shown.add(sig)
+        fig.add_vline(x=0, line=dict(color=AXIS, width=1.5), row=i, col=1)
+        fig.update_yaxes(categoryorder="array", categoryarray=list(gg.label), row=i, col=1)
+    base_layout(fig, "Spending tracks health outcomes, not the care received",
+                "Spearman correlation of spending per capita with each indicator · signed so that + means higher "
+                "spending accompanies better results · bars = 95% confidence interval",
+                height=820, margin=dict(l=200))
+    fig.update_xaxes(range=[-1, 1], zeroline=False, dtick=0.25, tickformat="+.2f")
+    fig.update_yaxes(tickfont=dict(family=FONT, size=11.5, color=SUBTLE), gridcolor="rgba(0,0,0,0)")
+    fig.update_xaxes(title_text="Spearman ρ (+ = better results with more spending)", row=len(groups), col=1)
+    out, care = r[r.group == "Outcome"], r[r.group == "Care"]
+    top = out.loc[out.r.idxmax()]
+    oop = r[r.label.str.startswith("Out-of-pocket")].iloc[0]
+    care_sig = list(care[care.p < 0.05].label)
+    n_out = int((out.p < 0.05).sum())
+    first = (f"All {len(out)} health outcomes" if n_out == len(out) else f"{n_out} of the {len(out)} health outcomes")
+    if care_sig:
+        verb = "rises" if len(care_sig) == 1 else "rise"
+        care_txt = (f"only {len(care_sig)} of the {len(care)} care indicators {verb} with spending "
+                    f"({', '.join(_lc(x) for x in care_sig)})")
+    else:
+        care_txt = f"none of the {len(care)} care indicators rises with spending"
+    oop_txt = (" One result moves the opposite way: families pay more out of their own pocket for a delivery in "
+               "higher-spending states." if oop.r < 0 and oop.p < 0.05 else "")
+    cap = (f"{first} are clearly better in states that spend more, with the strongest link for "
+           f"{_lc(top.label)}. But {care_txt}.{oop_txt} A dot whose bar crosses the middle line has no clear "
+           f"link either way.")
+    return fig, cap
+
+def quarter_bars(b, sel):
+    """Horizontal bars: average score of the lowest- vs highest-spending quarter of states, per indicator group."""
+    t = b.total.copy()
+    t["q"] = pd.qcut(t.pc, 4, labels=False)
+    groups = HEATMAP_GROUPS["Outcomes"] + HEATMAP_GROUPS["Care"]
+    names, low, high, mine = [], [], [], []
+    for g, keys, _ in groups:
+        keys = [k for k in keys if k in t and t[k].notna().any()]
+        score = np.column_stack([D.minmax_score(t[k], D.IND[k].better) for k in keys]).mean(axis=1)
+        t[g] = score
+        names.append(g)
+        low.append(t.loc[t.q == 0, g].mean())
+        high.append(t.loc[t.q == 3, g].mean())
+        mine.append(t.loc[t.State == sel, g].iloc[0] if sel in set(t.State) else None)
+    lo_rng = f"{inr(t.loc[t.q == 0, 'pc'].min())}–{inr(t.loc[t.q == 0, 'pc'].max())}"
+    hi_rng = f"{inr(t.loc[t.q == 3, 'pc'].min())}–{inr(t.loc[t.q == 3, 'pc'].max())}"
+    order = names[::-1]                      # first group at the top
+    fig = go.Figure()
+    fig.add_trace(go.Bar(y=names, x=low, orientation="h", name=f"Lowest-spending quarter ({lo_rng})",
+                         marker=dict(color=SERIES_B, cornerradius=3), text=[f"{v:.0f}" for v in low],
+                         textposition="outside", textfont=dict(color=SUBTLE, size=11),
+                         hovertemplate="<b>%{y}</b><br>Lowest-spending quarter: %{x:.0f}/100<extra></extra>"))
+    fig.add_trace(go.Bar(y=names, x=high, orientation="h", name=f"Highest-spending quarter ({hi_rng})",
+                         marker=dict(color=SERIES_A, cornerradius=3), text=[f"{v:.0f}" for v in high],
+                         textposition="outside", textfont=dict(color=SUBTLE, size=11),
+                         hovertemplate="<b>%{y}</b><br>Highest-spending quarter: %{x:.0f}/100<extra></extra>"))
+    if sel in set(t.State):                  # the selected state's own score as a cyan tick
+        fig.add_trace(go.Scatter(y=names, x=mine, mode="markers", name=sel,
+                                 marker=dict(symbol="line-ns", size=26, line=dict(color=HL, width=3)),
+                                 hovertemplate=f"<b>%{{y}}</b><br>{sel}: %{{x:.0f}}/100<extra></extra>"))
+    # Divider between the outcome groups and the care groups
+    n_out = len(HEATMAP_GROUPS["Outcomes"])
+    div = len(names) - n_out - 0.5          # categories are counted from the bottom
+    fig.add_hline(y=div, line=dict(color=AXIS, width=1, dash="dot"))
+    fig.add_annotation(x=1, xref="paper", y=div, yanchor="bottom", xanchor="right", showarrow=False,
+                       text="▲ health outcomes · care received ▼", font=dict(color=FAINT, size=11))
+    base_layout(fig, "The top spenders lead on every outcome group, but not on care",
+                "Average score of the lowest- and highest-spending quarters · 0 = worst state, 100 = best",
+                height=640, margin=dict(l=180))
+    fig.update_layout(barmode="group", bargap=0.28, bargroupgap=0.08)
+    fig.update_xaxes(title_text="Average score (0–100)", range=[0, 105])
+    fig.update_yaxes(categoryorder="array", categoryarray=order, gridcolor="rgba(0,0,0,0)",
+                     tickfont=dict(family=FONT, size=12, color=SUBTLE))
+    gaps = {n: h - l for n, l, h in zip(names, low, high)}
+    big = max(names[:n_out], key=lambda n: gaps[n])
+    care_name = {"Pregnancy & birth": "care in pregnancy and birth", "Young children": "care for young children"}
+
+    def compare(n):
+        """'lower on care in pregnancy and birth (43 vs 56)' etc."""
+        i = names.index(n)
+        word = "about the same" if abs(gaps[n]) < 5 else ("higher" if gaps[n] > 0 else "lower")
+        return f"{word} on {care_name.get(n, n.lower())} ({high[i]:.0f} vs {low[i]:.0f})"
+
+    care_txt = " and ".join(compare(n) for n in names[n_out:])
+    cap = (f"Mothers and children are far healthier in the quarter of states that spend the most than in the "
+           f"quarter that spends the least: on {big.lower()} they score {high[names.index(big)]:.0f} out of 100, "
+           f"against {low[names.index(big)]:.0f}. But they do not receive more care: the big spenders score "
+           f"{care_txt}.")
+    return fig, cap
+
+def value_for_money(b, sel):
+    """Diverging bars: each state's Outcome Index minus what its spending predicts (from the trend line)."""
+    t = b.total.copy()
+    sl, ic = D.log_fit(t.pc, t.outcome_idx)                 # same trend line as the main scatter
+    t["expected"] = ic + sl * np.log10(t.pc)
+    t["gap"] = t.outcome_idx - t.expected
+    t = t.sort_values("gap").reset_index(drop=True)          # plotted bottom to top: best ends on top
+    better = t.gap >= 0
+    fig = go.Figure()
+    for mask, name, col in [(better, "Better than its spending predicts", SERIES_A),
+                            (~better, "Worse than its spending predicts", SERIES_B)]:
+        g = t[mask]
+        fig.add_trace(go.Bar(
+            y=g.State, x=g.gap, orientation="h", name=name,
+            marker=dict(color=col, cornerradius=3,
+                        line=dict(color=[HL if st == sel else col for st in g.State],
+                                  width=[3 if st == sel else 0 for st in g.State])),
+            text=[f"{v:+.0f}" for v in g.gap], textposition="outside", textfont=dict(color=SUBTLE, size=10.5),
+            customdata=np.stack([g.pc.map(inr), g.outcome_idx.round(0), g.expected.round(0)], axis=1),
+            hovertemplate="<b>%{y}</b> (%{customdata[0]} per capita)<br>Outcome Index %{customdata[1]}, "
+                          "expected %{customdata[2]}<br>%{x:+.0f} points<extra></extra>"))
+    fig.add_vline(x=0, line=dict(color=AXIS, width=1.5))
+    base_layout(fig, "Health per rupee: who does better or worse than their spending predicts",
+                "Actual Outcome Index minus the value expected from the state's spending (trend line) · points",
+                height=760, margin=dict(l=150))
+    fig.update_layout(barmode="relative")
+    lim = float(np.ceil(t.gap.abs().max() / 10) * 10 + 8)
+    fig.update_xaxes(title_text="Points above (+) or below (−) expected Outcome Index", range=[-lim, lim],
+                     zeroline=False)
+    fig.update_yaxes(categoryorder="array", categoryarray=list(t.State), gridcolor="rgba(0,0,0,0)",
+                     tickfont=dict(family=FONT, size=11.5, color=SUBTLE))
+    top, bot = t.iloc[-1], t.iloc[0]
+    cap = (f"{top.State} does {top.gap:.0f} points better than its spending of {inr(top.pc)} per capita would "
+           f"predict, the best value for money of any state, while {bot.State} does {abs(bot.gap):.0f} points worse "
+           f"than expected on {inr(bot.pc)}. {int(better.sum())} of {len(t)} states beat their prediction. How "
+           f"well money is used matters as well as how much is spent.")
+    return fig, cap
+
+def two_indices(b, sel):
+    """Side by side: spending vs the Outcome Index and spending vs the Care Index, same states, same scale."""
+    t = b.total
+    fig = make_subplots(rows=1, cols=2, shared_yaxes=True, horizontal_spacing=0.05,
+                        subplot_titles=["Outcome Index", "Care Index"])
+    for i, k in enumerate(["outcome_idx", "care_idx"], start=1):
+        hov = (np.stack([t.State, t.pc.map(inr), t[k].round(0)], axis=1),
+               "<b>%{customdata[0]}</b><br>%{customdata[1]} per capita<br>" + label_any(k)
+               + " %{customdata[2]}<extra></extra>")
+        _scatter_regions(fig, t, "pc", k, hover=hov, row=1, col=i, showlegend=i == 1, base=11)
+        s = D.spearman(t.pc, t[k])
+        sl, ic = D.log_fit(t.pc, t[k])
+        xs = np.logspace(np.log10(t.pc.min() * 0.92), np.log10(t.pc.max() * 1.08), 40)
+        # solid white trend line when the link is significant, faint dotted line when it is not
+        fig.add_trace(go.Scatter(x=xs, y=ic + sl * np.log10(xs), mode="lines", showlegend=False, hoverinfo="skip",
+                                 line=dict(color=TEXT if _sig(s["p"]) else NEUTRAL, width=2.2,
+                                           dash="solid" if _sig(s["p"]) else "dot")), row=1, col=i)
+        fig.add_annotation(x=0.02, y=0.98, xref=f"x{'' if i == 1 else i} domain", yref="y domain",
+                           xanchor="left", yanchor="top", text=_rho_text(s), showarrow=False,
+                           font=dict(family=FONT_MONO, size=12, color=TEXT), bgcolor=LABEL_BG, borderpad=5)
+        _log_axis(fig, title="Health spending per capita (₹, log scale)", row=1, col=i, ticks=[500, 1000, 2000, 4000])
+        if sel in set(t.State):
+            r = t[t.State == sel].iloc[0]
+            _highlight_point(fig, r.pc, r[k], sel if i == 1 else "", row=1, col=i, size=17)
+    base_layout(fig, "Outcomes rise with spending, care does not",
+                "Same 29 states in both panels · solid line = significant trend, dotted line = no clear trend",
+                height=760)
+    fig.update_yaxes(range=[-3, 103], title_text="Index (0 = worst state, 100 = best)", row=1, col=1)
+    so, sc = D.spearman(t.pc, t.outcome_idx), D.spearman(t.pc, t.care_idx)
+    rest = t[~t.flagged_ne]
+    sc2 = D.spearman(rest.pc, rest.care_idx)
+    cap = (f"In the left panel, the states climb with spending: higher-spending states have clearly healthier "
+           f"mothers and children (ρ = {so['r']:+.2f}). In the right panel, however, they do not: how much antenatal care, "
+           f"facility births and vaccination families receive is unrelated to spending (ρ = {sc['r']:+.2f}). ")
+    if _sig(sc2["p"]) and not _sig(sc["p"]):
+        cap += (f"The reason is partly the six small north-eastern states, which spend a lot but have little formal "
+                f"care. Without them, care does rise with spending (ρ = {sc2['r']:+.2f}).")
+    else:
+        cap += "Whatever extra spending buys, it is not mainly more routine care."
+    return fig, cap

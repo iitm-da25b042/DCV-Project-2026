@@ -1624,7 +1624,7 @@ def two_indices(b, sel):
         cap += "Whatever extra spending buys, it is not mainly more routine care."
     return fig, cap
 
-# Tab 4 - Is it really the spending?
+# Tab 4: Is it really the spending?
 CONFOUNDER_KEYS = ["school", "lit", "san", "water", "insur"]
 CONFOUNDER_SHORT = {"school": "women's schooling", "lit": "women's literacy", "san": "sanitation",
                     "water": "drinking water", "insur": "health insurance"}
@@ -1831,3 +1831,185 @@ def oop_scatter(b, sel):
            f"without the north-eastern states (ρ = {w['r']:+.2f}). A possible reason is that care costs more in "
            f"remote and hilly states, although this claim cannot be backed up by the available data.")
     return fig, cap
+
+# Tab 5: Data Cleaning-Before vs After
+def _trim(s, n):
+    return s if len(s) <= n else s[: n - 1] + "…"
+ 
+SHORT_NAMES = {
+    "taken_to_a_health_facility_for_a_check_up_within_24_hours": "Home-born babies<br>checked within 24 h",
+    "non_breastfeeding_children_age_6_23_months_receiving_an_adequate_diet": "Adequate diet<br>(not breastfed, 6–23 m)",
+    "breastfeeding_children_age_6_23_months_receiving_an_adequate_diet": "Adequate diet<br>(breastfed, 6–23 m)",
+    "receiving_solid_or_semi_solid_food_and_breastmilk": "Solid food + breastmilk<br>(6–8 m)",
+}
+ 
+def short_name(k):
+    for part, name in SHORT_NAMES.items():
+        if part in k and not(part.startswith("breastfeeding") and "non_breastfeeding" in k):
+            return name
+    return _trim(D.label_of(k), 28)
+ 
+def _area_tables(b, which="raw"):
+    """{area: State x indicator table} from the raw, cleaned or imputed-mask data."""
+    df = {"raw": b.raw, "clean": b.clean, "imputed": b.imputed}[which]
+    keys = D.indicator_keys(b.raw)
+    return {a: df[df.Area == a].set_index("State")[keys] for a in D.AREAS}
+ 
+def cleaning_summary(b, sel):
+    """Horizontal bars: problems found in the raw file and what was done about each of them."""
+    a = b.audit
+    raw = _area_tables(b, "raw")
+    miss = {ar: int(raw[ar].isna().sum().sum()) for ar in D.AREAS}
+    o = b.outliers
+    corroborated = int(((o[["DBSCAN", "LOF"]] > 0).any(axis=1) & (o[["IQR", "Modified z", "Grubbs"]] > 0).any(axis=1)).sum())
+    dupes = int(b.raw[b.raw.Area == "Total"].State.duplicated().sum())
+    items = [  # (problem, count, action, changed?
+        ("Empty columns", a["empty_cols"], "dropped", True),
+        ("Numbers stored as text (with commas as per Indian grouping)", a["text_numbers"], "converted to numbers", True),
+        ("Duplicate rows or state names", dupes, "none found", False),
+        ("States flagged as outliers by several methods", corroborated, "kept: genuine values", False),
+        ("Missing values: Urban figures", miss["Urban"], "filled by KNN", True),
+        ("Missing values: Rural figures", miss["Rural"], "filled by KNN", True),
+        ("Missing values: Total figures", miss["Total"], "filled by KNN", True),
+    ][::-1]
+    fig = go.Figure()
+    for changed, name, col in [(True, "Fixed during cleaning", SERIES_A), (False, "Checked, no change needed", SERIES_B)]:
+        rows = [i for i in items if i[3] == changed]
+        fig.add_trace(go.Bar(
+            y=[i[0] for i in rows], x=[i[1] for i in rows], orientation="h", name=name,
+            marker=dict(color=col, cornerradius=3), text=[f"{i[1]}  · {i[2]}" for i in rows],
+            textposition="outside", textfont=dict(family=FONT, size=11.5, color=SUBTLE), cliponaxis=False,
+            hovertemplate="<b>%{y}</b><br>%{x}<extra></extra>"))
+    base_layout(fig, "What cleaning found and fixed", "Number of cells, columns, rows or states affected in the raw file",
+                height=560, margin=dict(l=300, r=40))
+    fig.update_layout(bargap=0.35)
+    fig.update_xaxes(title_text="Count", rangemode="tozero", range=[0, max(i[1] for i in items) * 1.6])
+    fig.update_yaxes(categoryorder="array", categoryarray=[i[0] for i in items],
+                     tickfont=dict(family=FONT, size=11.5, color=SUBTLE), gridcolor="rgba(0,0,0,0)")
+    total = sum(miss.values())
+    cap = (f"The raw file had {a['empty_cols']} empty columns, which were dropped, and {a['text_numbers']} numbers "
+           f"stored as text with Indian-style commas, which were converted. There were no duplicate rows. The "
+           f"{total} missing values were filled in using KNN imputation. The {corroborated} states flagged as "
+           f"outliers by more than one method were deliberately retained, as their values are genuine.")
+    return fig, cap
+ 
+def missing_by_state(b, sel):
+    """Heatmap: number of missing values for each state, split by Total/Urban/Rural."""
+    raw = _area_tables(b, "raw")
+    m = pd.DataFrame({a: raw[a].isna().sum(axis=1) for a in D.AREAS})
+    m = m[m.sum(axis=1) > 0]
+    m = m.loc[m.sum(axis=1).sort_values(ascending=False).index]
+    z = m.where(m > 0)  # zero cells stay blank
+    fig = go.Figure(go.Heatmap(
+        z=z.values, x=[f"{a} figures" for a in m.columns], y=m.index, xgap=3, ygap=3,
+        colorscale=[[0, "#c2531f"], [0.4, "#f08a4b"], [0.75, "#f9c48d"], [1, "#ffe8c2"]],
+        zmin=1, zmax=float(m.values.max()),
+        text=m.where(m > 0, "").values, texttemplate="%{text}", textfont=dict(family=FONT_MONO, size=12, color="#0D1017"),
+        colorbar=dict(title=dict(text="Missing<br>values", font=dict(color=MUTED, size=11.5)),
+                      tickfont=dict(family=FONT_MONO, color=FAINT, size=11), thickness=10, outlinewidth=0, len=0.7),
+        hovertemplate="<b>%{y}</b><br>%{x}: %{z} missing<extra></extra>"))
+    if sel in m.index:
+        fig.add_shape(type="rect", xref="paper", x0=0, x1=1, yref="y", y0=list(m.index).index(sel) - 0.5,
+                      y1=list(m.index).index(sel) + 0.5, line=dict(color=HL, width=2.5))
+    base_layout(fig, "Where the gaps were",
+                f"Missing values in the raw file, for the {len(m)} states with any gaps (all filled after cleaning)",
+                height=560, legend=False, margin=dict(l=150))
+    fig.update_yaxes(autorange="reversed", tickfont=dict(family=FONT, size=11.5, color=SUBTLE), gridcolor="rgba(0,0,0,0)")
+    fig.update_xaxes(side="top", tickfont=dict(family=FONT, size=12, color=SUBTLE), gridcolor="rgba(0,0,0,0)")
+    worst = m.sum(axis=1).idxmax()
+    share = m.loc[worst].sum() / m.values.sum() * 100
+    cap = (f"Of the {int(m.values.sum())} missing values, {int(m['Urban'].sum())} were in the urban figures and only "
+           f"{int(m['Total'].sum())} in the state totals used for most of the analysis. {worst} alone accounts for "
+           f"{share:.0f}% of the gaps ({int(m.loc[worst].sum())} values), most of them urban, since small states with "
+           f"little urban population often have nothing much to report for the urban figures.")
+    return fig, cap
+ 
+def imputation_violin(b, sel, area="Urban", n=4):
+    """Split violins: each indicator's spread before cleaning (surveyed values only) vs after KNN imputation."""
+    raw, cl = _area_tables(b, "raw")[area], _area_tables(b, "clean")[area]
+    gaps = raw.isna().sum()
+    cols = list(gaps[gaps > 0].sort_values(ascending=False).index[:n])
+    fig = make_subplots(rows=1, cols=len(cols), horizontal_spacing=0.07,
+                        subplot_titles=[f"{short_name(k)}<br><span style='color:{FAINT}'>{int(gaps[k])} states imputed</span>"
+                                        for k in cols])
+    inside = 0
+    for i, k in enumerate(cols, start=1):
+        before, after = raw[k].dropna(), cl[k]
+        filled = cl.loc[raw[k].isna(), k]
+        inside += int(filled.between(before.min(), before.max()).sum())
+        nm = short_name(k).replace("<br>", " ")
+        common = dict(x0=" ", width=0.95, points=False, spanmode="hard", hoveron="violins",
+                      meanline=dict(visible=True, color=TEXT, width=1.5))
+        fig.add_trace(go.Violin(y=before, side="negative", name="Before cleaning (surveyed values only)",
+                                legendgroup="before", showlegend=i == 1, line=dict(color=SERIES_B, width=1.5),
+                                fillcolor="rgba(217,89,38,0.40)", **common,
+                                hovertemplate=f"<b>{nm}</b><br>Before: {len(before)} states, mean {before.mean():.1f}%<extra></extra>"),
+                      row=1, col=i)
+        fig.add_trace(go.Violin(y=after, side="positive", name="After cleaning (with imputed values)",
+                                legendgroup="after", showlegend=i == 1, line=dict(color=SERIES_A, width=1.5),
+                                fillcolor="rgba(57,135,229,0.40)", **common,
+                                hovertemplate=f"<b>{nm}</b><br>After: {len(after)} states, mean {after.mean():.1f}%<extra></extra>"),
+                      row=1, col=i)
+        fig.add_trace(go.Scatter(
+            x=[" "] * len(filled), y=filled, mode="markers", name="Imputed value", legendgroup="imp",
+            showlegend=i == 1, marker=dict(symbol="diamond-open", size=10, color=TEXT, line=dict(width=2)),
+            text=filled.index, hovertemplate="<b>%{text}</b><br>Imputed: %{y:.1f}%<extra></extra>"),
+            row=1, col=i)
+        if sel in filled.index:
+            _highlight_point(fig, " ", filled[sel], sel, row=1, col=i, size=18, textpos="middle right")
+        fig.update_yaxes(ticksuffix="%", row=1, col=i)
+    base_layout(fig, "Imputation fills the gaps without reshaping the data",
+                f"{area} figures · left half = before cleaning, right half = after · line = mean", height=620,
+                margin=dict(b=90))
+    fig.update_layout(violinmode="overlay", violingap=0,
+                      legend=dict(orientation="h", x=0.5, xanchor="center", yref="paper", y=-0.04, yanchor="top"))
+    fig.update_yaxes(title_text="% of the group", row=1, col=1)
+    fig.update_xaxes(showticklabels=False, gridcolor="rgba(0,0,0,0)")
+    fig.update_annotations(font=dict(family=FONT, size=11.5, color=SUBTLE))
+    shift = pd.Series({short_name(k).replace("<br>", " "): cl[k].mean() - raw[k].mean() for k in cols})
+    big = shift.abs().idxmax()
+    total = int(gaps[cols].sum())
+    cap = (f"These {len(cols)} {area.lower()} indicators had {total} missing values between them, filled in "
+           f"from the most similar states using K-nearest neighbours (KNN) imputation. Each violin keeps the same "
+           f"shape after cleaning, and the average moves by at most {abs(shift[big]):.1f} percentage points, for "
+           f"{_lc(big)}. {inside} of the {total} filled-in values (hollow diamonds) sit inside the range of the "
+           f"surveyed states, showing that imputation did not distort the data.")
+    return fig, cap
+ 
+def outlier_agreement(b, sel):
+    """Heatmap: which states each of the five outlier methods flags (same settings as the cleaning notebook)."""
+    o = b.outliers.copy()
+    o = o[(o > 0).any(axis=1)]
+    methods = ["IQR", "Modified z", "Grubbs", "DBSCAN", "LOF"]
+    o["n_methods"] = (o[methods] > 0).sum(axis=1)
+    o = o.sort_values(["n_methods", "IQR"], ascending=[False, False])
+    uni = ["IQR", "Modified z", "Grubbs"]
+    # colour = share of that method's maximum, so each row uses the full scale; text = the actual count
+    z = np.vstack([o[m] / max(o[m].max(), 1) for m in methods])
+    z = np.where(z > 0, z, np.nan)
+    text = [[(str(int(v)) if m in uni else "✓") if v else "" for v in o[m]] for m in methods]
+    rows = [f"{m}<br><span style='font-size:10.5px;color:{FAINT}'>"
+            f"{'columns flagged' if m in uni else 'whole state'}</span>" for m in methods]
+    fig = go.Figure(go.Heatmap(
+        z=z, x=o.index, y=rows, colorscale=SEQ_COUNT, zmin=0, zmax=1, showscale=False, xgap=3, ygap=3,
+        text=text, texttemplate="%{text}", textfont=dict(family=FONT_MONO, size=11.5, color="#0D1017"),
+        hovertemplate="<b>%{x}</b><br>%{y}<br>%{text}<extra></extra>"))
+    if sel in o.index:
+        i = list(o.index).index(sel)
+        fig.add_shape(type="rect", xref="x", x0=i - 0.5, x1=i + 0.5, yref="paper", y0=0, y1=1,
+                      line=dict(color=HL, width=2.5))
+    base_layout(fig, "Which states look unusual, and to how many methods",
+                f"Three tests look at one column at a time (number = columns where the state is extreme, out of "
+                f"{b.outliers.attrs.get('n_cols', 166)}); two look at each state's whole profile (✓ = flagged)",
+                height=440, legend=False, margin=dict(l=120, b=110))
+    fig.update_yaxes(autorange="reversed", tickfont=dict(family=FONT, size=12, color=SUBTLE), gridcolor="rgba(0,0,0,0)")
+    fig.update_xaxes(tickangle=-40, tickfont=dict(family=FONT, size=11.5, color=SUBTLE), gridcolor="rgba(0,0,0,0)")
+    multi = (o[["DBSCAN", "LOF"]] > 0).any(axis=1)
+    both = o[multi & (o[uni] > 0).any(axis=1)]
+    who = ("the six small north-eastern states" if set(both.index) == set(D.FLAGGED_NE) else ", ".join(both.index))
+    cap = (f"{len(o)} of the 29 states look extreme on at least one column, which is expected with 166 columns. "
+           f"Only {who} are flagged both by the whole-profile test (DBSCAN) and the single-column tests. Local Outlier Factor "
+           f"flags no state. Their values are plausible and come from official government sources, so no outliers "
+           f"were removed.")
+    return fig, cap
+ 

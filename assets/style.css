@@ -1,0 +1,105 @@
+/* Dark dashboard theme. Dash loads every .css file in /assets automatically.
+   Colours match theme.py: background, card, text and the single cyan highlight. */
+:root {
+  --bg: #000000;
+  --card: #171A26;
+  --line: #262B3A;
+  --text: #E9ECF2;
+  --subtle: #C4CAD6;
+  --muted: #A3ACBC;
+  --faint: #8C96A8;
+  --hl: #2EE6FF;
+  --hl-bg: rgba(46, 230, 255, 0.10);
+  --display: "Outfit", "Inter", system-ui, sans-serif;
+  --sans: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--subtle); font-family: var(--sans); }
+body { -webkit-font-smoothing: antialiased; }
+.page { max-width: 1700px; margin: 0 auto; padding: 24px 16px 32px; }
+
+/* Header */
+.header { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 20px; }
+.title-block { flex: 1 1 560px; min-width: 0; }
+.header h1 { margin: 0 0 6px; font: 700 30px/1.2 var(--display); color: var(--text); }
+.subtitle { margin: 0; font-size: 15px; color: var(--muted); }
+.hint { font-size: 12px; color: var(--faint); }
+
+/* Tabs */
+.tabs-parent { margin-bottom: 4px; }
+.tabs { display: flex !important; flex-wrap: wrap; gap: 8px; background: transparent !important;
+  border: 0 !important; padding-bottom: 16px; }
+.tab { flex: 0 0 auto !important; width: auto !important; padding: 10px 16px !important; border: 0 !important;
+  border-radius: 10px !important; background: var(--card) !important; color: var(--muted) !important;
+  font: 500 14px var(--sans) !important; cursor: pointer; }
+.tab:hover { color: var(--text) !important; }
+.tab--selected { color: var(--text) !important; box-shadow: inset 0 -2px 0 var(--hl); }
+.tab-content { display: flex; flex-direction: column; gap: 20px; }
+
+/* Tab intro */
+.intro h2 { margin: 0 0 4px; font: 600 22px/1.25 var(--display); color: var(--text); }
+.intro p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--muted); max-width: 110ch; }
+
+/* Headline cards */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kpi { background: var(--card); border-radius: 14px; padding: 14px 16px; }
+.kpi.accent { box-shadow: inset 0 0 0 1.5px var(--hl); }
+.kpi-label { font-size: 13px; color: var(--muted); }
+.kpi-value { font: 600 28px var(--display); color: var(--text); margin: 6px 0; }
+.kpi.accent .kpi-value { color: var(--hl); }
+.kpi-note { font-size: 12.5px; color: var(--faint); }
+
+/* Chart grid: two columns, wide cards span both */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.card { background: var(--card); border-radius: 14px; padding: 12px 12px 4px; min-width: 0; }
+.card.wide { grid-column: 1 / -1; }
+.caption { font-size: 14px; line-height: 1.55; padding: 4px 10px 10px; margin: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: flex-end; padding: 6px 8px 4px;
+  position: relative; z-index: 10; }  /* keeps dropdown menus above the chart below */
+
+/* Controls */
+.control { display: flex; flex-direction: column; gap: 6px; }
+.control-label { font: 500 13px var(--sans); color: var(--muted); }
+.radio { display: flex; flex-wrap: wrap; gap: 6px; }
+.radio-label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line);
+  border-radius: 8px; color: var(--subtle); font-size: 13.5px; cursor: pointer; margin: 0 !important; }
+.radio-label:has(input:checked) { border-color: var(--hl); color: var(--text); background: var(--hl-bg); }
+.radio-input { accent-color: var(--hl); margin: 0; }
+
+/* dcc.Dropdown (Dash 2.x) */
+.Select-control { background: #0F121B !important; border: 1px solid #343C4C !important; border-radius: 10px !important;
+  color: var(--text) !important; box-shadow: none !important; }
+.is-focused:not(.is-open) > .Select-control, .is-open > .Select-control { border-color: var(--hl) !important; }
+.Select-value-label, .Select--single > .Select-control .Select-value .Select-value-label { color: var(--text) !important; }
+.Select-placeholder { color: var(--faint) !important; }
+.Select-input > input { color: var(--text) !important; }
+.Select-menu-outer { background: #0F121B !important; border: 1px solid #343C4C !important; border-radius: 10px !important;
+  overflow: hidden; z-index: 1100 !important; }
+.VirtualizedSelectOption, .Select-option { background: #0F121B !important; color: var(--subtle) !important; }
+.VirtualizedSelectFocusedOption, .Select-option.is-focused { background: #1E2433 !important; color: var(--text) !important; }
+.VirtualizedSelectSelectedOption { color: var(--hl) !important; font-weight: 600; }
+.Select-arrow { border-top-color: var(--muted) !important; }
+.Select-clear { color: var(--muted) !important; }
+
+/* Findings & methods tab */
+.findings { padding: 20px 24px; }
+.finding { display: grid; grid-template-columns: 48px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--bg); }
+.finding:first-child { border-top: 0; }
+.finding-n { font: 500 22px var(--mono); color: var(--hl); }
+.finding h3 { margin: 0 0 4px; font-size: 15.5px; color: var(--text); }
+.finding p { margin: 0; font-size: 14px; line-height: 1.6; }
+.finding-ref { margin-top: 6px; font-size: 12px; color: var(--faint); }
+.notes { padding: 20px 24px; }
+.notes h2 { margin: 0 0 4px; font: 600 20px var(--display); color: var(--text); }
+.notes h4 { margin: 16px 0 4px; font-size: 14.5px; color: var(--text); }
+.notes p { margin: 0; font-size: 14px; line-height: 1.6; }
+
+.footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--faint); }
+
+@media (max-width: 1100px) {
+  .grid, .kpis { grid-template-columns: 1fr; }
+  .header h1 { font-size: 24px; }
+}

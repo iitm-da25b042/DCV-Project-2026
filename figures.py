@@ -192,38 +192,73 @@ def _label_points(fig, d, x, y, names, row=None, col=None, pos=None, logx=False)
         )
 
 
-# Header KPI cards
-def kpis(b):
-    """Headline numbers shown in cards above the tabs."""
-    t = b.total
-    lo, hi = t.loc[t.pc.idxmin()], t.loc[t.pc.idxmax()]
-    so = D.spearman(t.pc, t.outcome_idx)
-    sc = D.spearman(t.pc, t.care_idx)
-    si = D.spearman(t.pc, t.imr)
-    return [
-        dict(
-            label="Median health spending per capita",
-            value=inr(t.pc.median()),
-            note=f"From {inr(lo.pc)} ({lo.State}) to {inr(hi.pc)} ({hi.State})",
-        ),
-        dict(
-            label="Spending vs Outcome Index",
-            value=f"ρ = {so['r']:+.2f}",
-            accent=True,
-            note=f"Higher spenders have healthier mothers and children ({fmt_p(so['p'])})",
-        ),
-        dict(
-            label="Spending vs Care Index",
-            value=f"ρ = {sc['r']:+.2f}",
-            note=f"No clear link with care received ({fmt_p(sc['p'])})",
-        ),
-        dict(
-            label="Spending vs infant mortality",
-            value=f"ρ = {si['r']:+.2f}",
-            note=f"Higher spenders lose fewer babies in the first year ({fmt_p(si['p'])})",
-        ),
-    ]
+# Headline cards for each tab
+def _card(label, value, note, accent=False):
+    return dict(label=label, value=value, note=note, accent=accent)
 
+def tab_kpis(b, tab):
+    """Four headline numbers for one tab (1-5). One card per tab is accented."""
+    t = b.total
+    if tab == 1:
+        lo, hi = t.loc[t.pc.idxmin()], t.loc[t.pc.idxmax()]
+        under = int((t.util_be < 100).sum())
+        top5 = t.nlargest(5, "spend_cr")
+        share = top5.spend_cr.sum() / t.spend_cr.sum() * 100
+        return [
+            _card("Median spending per capita", inr(t.pc.median()), f"Half of the {len(t)} states spend less than this"),
+            _card("Gap between states", f"{hi.pc / lo.pc:.0f}×", f"{inr(hi.pc)} in {hi.State} vs {inr(lo.pc)} in {lo.State}", True),
+            _card("Spent less than budgeted", f"{under} of {len(t)}", "states in 2019-20"),
+            _card("Five biggest budgets", f"{share:.0f}%", "of all state health spending"),
+        ]
+    if tab == 2:
+        srb = next(c for c in t.columns if "sex_ratio_at_birth" in c)
+        low_srb = int((t[srb] < SRB_NATURAL[0]).sum())
+        best, worst = t.loc[t.imr.idxmin()], t.loc[t.imr.idxmax()]
+        return [
+            _card("Median infant mortality", f"{t.imr.median():.0f}", f"per 1,000 live births · from {best.imr:.0f} ({best.State}) to {worst.imr:.0f} ({worst.State})"),
+            _card("Median child stunting", f"{t.stunt.median():.0f}%", "of children under 5 are too short for their age"),
+            _card("Median anaemia in pregnancy", f"{t.anaem_preg.median():.0f}%", "of pregnant women are anaemic"),
+            _card("Sex ratio at birth below normal", f"{low_srb} of {len(t)}", f"states fall below {SRB_NATURAL[0]} girls per 1,000 boys", True),
+        ]
+    if tab == 3:
+        so, sc = D.spearman(t.pc, t.outcome_idx), D.spearman(t.pc, t.care_idx)
+        outs = [i.key for i in D.INDICATORS if i.group == "Outcome" and t[i.key].notna().sum() >= 10]
+        n_sig = sum(_sig(D.spearman(t.pc, t[k])["p"]) for k in outs)
+        sl, ic = D.log_fit(t.pc, t.outcome_idx)
+        gap = t.outcome_idx - (ic + sl * np.log10(t.pc))
+        star = t.loc[gap.idxmax(), "State"]
+        return [
+            _card("Spending vs Outcome Index", f"ρ = {so['r']:+.2f}", f"Strong link ({fmt_p(so['p'])})", True),
+            _card("Spending vs Care Index", f"ρ = {sc['r']:+.2f}", f"No clear link ({fmt_p(sc['p'])})"),
+            _card("Outcomes linked to spending", f"{n_sig} of {len(outs)}", "health outcomes improve significantly with spending"),
+            _card("Best value for money", star, f"{gap.max():+.0f} points above what its spending predicts"),
+        ]
+    if tab == 4:
+        raw = D.spearman(t.pc, t.outcome_idx)
+        parts = {k: D.partial_spearman(t.pc, t.outcome_idx, t[k])["r"] for k in confounders(b)}
+        weakest = min(parts, key=parts.get)
+        wo = D.spearman(t[~t.flagged_ne].pc, t[~t.flagged_ne].outcome_idx)
+        p1 = t[t.State.isin(PHASE1)]
+        pre = D.spearman(p1.pc, p1.outcome_idx)
+        oop = D.spearman(t.pc, t.oop)
+        return [
+            _card("Lowest link after adjusting", f"ρ = {parts[weakest]:+.2f}", f"after allowing for {CONFOUNDER_SHORT[weakest]} (from {raw['r']:+.2f})", True),
+            _card("Without the north-east", f"ρ = {wo['r']:+.2f}", f"{wo['n']} states ({fmt_p(wo['p'])})"),
+            _card("Surveyed before COVID", f"ρ = {pre['r']:+.2f}", f"{pre['n']} Phase 1 states ({fmt_p(pre['p'])})"),
+            _card("Out-of-pocket cost vs spending", f"ρ = {oop['r']:+.2f}", "families pay more where states spend more" if oop["r"] > 0 else "families pay less where states spend more"),
+        ]
+    if tab == 5:
+        a = b.audit
+        n_miss = int(sum(v.isna().sum().sum() for v in _area_tables(b, "raw").values()))
+        o = b.outliers
+        kept = int(((o[["DBSCAN", "LOF"]] > 0).any(axis=1) & (o[["IQR", "Modified z", "Grubbs"]] > 0).any(axis=1)).sum())
+        return [
+            _card("Missing values filled", f"{n_miss} → 0", "by correlation-guided KNN imputation", True),
+            _card("Empty columns dropped", str(a["empty_cols"]), "from the raw file"),
+            _card("Text cells converted", str(a["text_numbers"]), "numbers stored with Indian-style commas"),
+            _card("Outlier states kept", str(kept), "flagged by several methods but genuine"),
+        ]
+    return []
 
 # Tab 1: Spending Landscape
 def map_spending(b, sel):

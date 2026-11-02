@@ -1623,3 +1623,211 @@ def two_indices(b, sel):
     else:
         cap += "Whatever extra spending buys, it is not mainly more routine care."
     return fig, cap
+
+# Tab 4 - Is it really the spending?
+CONFOUNDER_KEYS = ["school", "lit", "san", "water", "insur"]
+CONFOUNDER_SHORT = {"school": "women's schooling", "lit": "women's literacy", "san": "sanitation",
+                    "water": "drinking water", "insur": "health insurance"}
+
+def confounders(b):
+    """Confounders with enough data to test."""
+    return [k for k in CONFOUNDER_KEYS if k in D.IND and b.total[k].notna().sum() >= 10]
+
+def _confounder_sentence(raw, part, sc, short):
+    """Verdict on one possible confounder."""
+    if sc["r"] <= -0.3:
+        cap = (f"Higher-spending states actually tend to do worse on {short} (ρ = {sc['r']:+.2f}). Therefore, it cannot "
+               f"be the hidden reason for these states to be healthier. ")
+    elif sc["r"] < 0.3:
+        cap = (f"{short[0].upper() + short[1:]} has little to do with a state's expenditure (ρ = {sc['r']:+.2f}), "
+               f"so it cannot be the hidden reason that higher spenders are healthier. ")
+    else:
+        cap = (f"Higher-spending states also tend to do better on {short} (ρ = {sc['r']:+.2f}), which could be the "
+               f"real reason their mothers and children are healthier. ")
+    if part["r"] >= raw["r"]:
+        cap += f"Allowing for it, the spending link does not weaken at all ({raw['r']:+.2f} to {part['r']:+.2f})."
+    elif _sig(part["p"]):
+        cap += (f"However, when states with similar {short} are compared, spending still matters: the link falls only "
+                f"from {raw['r']:+.2f} to {part['r']:+.2f} ({fmt_p(part['p'])}), keeping about "
+                f"{part['r'] / raw['r'] * 100:.0f}% of its strength.")
+    else:
+        cap += (f"Once {short} is allowed for, the spending link largely disappears ({raw['r']:+.2f} to "
+                f"{part['r']:+.2f}, {fmt_p(part['p'])}).")
+    return cap
+
+def confounder_scatter(b, sel, conf="school"):
+    """Spending vs Outcome Index, dots coloured by a possible confounder (say, women's schooling)"""
+    t = b.total.dropna(subset=[conf])
+    lab, unit, short = D.IND[conf].label, D.IND[conf].unit, CONFOUNDER_SHORT.get(conf, _lc(D.IND[conf].label))
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=t.pc, y=t.outcome_idx, mode="markers", showlegend=False,
+        marker=dict(size=15, color=t[conf], colorscale=SEQ_ALT, line=dict(color=CARD, width=1),
+                    colorbar=dict(title=dict(text=f"{short.capitalize()}<br>({unit})", font=dict(color=MUTED, size=11.5)),
+                                  tickfont=dict(family=FONT_MONO, color=FAINT, size=11), thickness=10,
+                                  len=0.6, outlinewidth=0)),
+        customdata=np.stack([t.State, t.pc.map(inr), t.outcome_idx.round(0), t[conf].round(1)], axis=1),
+        hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]} per capita<br>Outcome Index %{customdata[2]}<br>"
+                      + lab + ": %{customdata[3]}<extra></extra>"))
+    if sel in set(t.State):
+        r = t[t.State == sel].iloc[0]
+        _highlight_point(fig, r.pc, r.outcome_idx, sel, size=22)
+    raw = D.spearman(t.pc, t.outcome_idx)
+    part = D.partial_spearman(t.pc, t.outcome_idx, t[conf])
+    sc = D.spearman(t.pc, t[conf])
+    base_layout(fig, f"Is it the money, or {short}?",
+                f"Spending vs Outcome Index · dot colour = {short} (lighter = higher)",
+                height=600, legend=False)
+    _log_axis(fig)
+    fig.update_yaxes(title_text="Outcome Index (0 = worst state, 100 = best)")
+    fig.add_annotation(x=0.99, y=0.02, xref="paper", yref="paper", xanchor="right", yanchor="bottom",
+                       showarrow=False, font=dict(family=FONT_MONO, size=12, color=TEXT), bgcolor=LABEL_BG,
+                       bordercolor=AXIS, borderpad=6, align="right",
+                       text=f"ρ {raw['r']:+.2f} → {part['r']:+.2f}<br>after allowing for {short}")
+    return fig, _confounder_sentence(raw, part, sc, short)
+
+def confounder_summary(b, sel):
+    """Dumbbell: the spending-outcome link before and after allowing for each possible confounder."""
+    t = b.total
+    raw = D.spearman(t.pc, t.outcome_idx)
+    rows = []
+    for k in confounders(b):
+        part = D.partial_spearman(t.pc, t.outcome_idx, t[k])
+        rows.append(dict(label=D.IND[k].label, short=CONFOUNDER_SHORT.get(k, _lc(D.IND[k].label)),
+                         r=part["r"], p=part["p"], with_spend=D.spearman(t.pc, t[k])["r"]))
+    r = pd.DataFrame(rows).sort_values("r").reset_index(drop=True)
+    fig = go.Figure()
+    for _, x in r.iterrows():
+        fig.add_trace(go.Scatter(x=[raw["r"], x.r], y=[x.label, x.label], mode="lines",
+                                 line=dict(color=AXIS, width=3), hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(x=[raw["r"]] * len(r), y=r.label, mode="markers", name="Spending alone",
+                             marker=dict(size=12, color=NEUTRAL, line=dict(color=CARD, width=1)),
+                             hovertemplate=f"Spending alone: ρ = {raw['r']:+.2f}<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        x=r.r, y=r.label, mode="markers+text", name="After allowing for this factor",
+        marker=dict(size=14, color=SERIES_A, symbol="diamond", line=dict(color=CARD, width=1)),
+        text=[f"{v:+.2f}" for v in r.r],
+        textposition=["middle right" if v >= raw["r"] else "middle left" for v in r.r],
+        textfont=dict(family=FONT_MONO, color=SUBTLE, size=11),
+        customdata=np.stack([r.p.map(fmt_p), r.with_spend.round(2)], axis=1),
+        hovertemplate="<b>%{y}</b><br>After allowing for it: ρ = %{x:+.2f}, %{customdata[0]}"
+                      "<br>Its own link with spending: ρ = %{customdata[1]}<extra></extra>"))
+    n_sig = int((r.p < 0.05).sum())
+    title = ("The spending link survives every other explanation tested" if n_sig == len(r)
+             else f"The spending link survives {n_sig} of {len(r)} other explanations")
+    base_layout(fig, title, "Spending vs Outcome Index (Spearman ρ), before and after allowing for each factor",
+                height=600, margin=dict(l=210))
+    fig.update_xaxes(title_text="Spearman ρ between spending and Outcome Index", range=[0, 1.0], dtick=0.2,
+                     tickformat=".1f")
+    fig.update_yaxes(categoryorder="array", categoryarray=list(r.label), gridcolor="rgba(0,0,0,0)",
+                     tickfont=dict(family=FONT, size=11.5, color=SUBTLE))
+    w = r.iloc[0]
+    verdict = ("The relationship remains statistically significant in all checks" if n_sig == len(r)
+           else f"The relationship remains statistically significant in {n_sig} of {len(r)} checks")
+    cap = (f"States that spend more may also have advantages such as better education or cleaner water, "
+       f"which could partly explain their better health outcomes. To examine this, "
+       f"{len(r)} potential influencing factors were tested, one at a time. {verdict}. The correlation (ρ) "
+       f"between spending and health outcomes is {raw['r']:+.2f} before adjustment and ranges "
+       f"from {w.r:+.2f} to {r.r.max():+.2f} after accounting for these factors. The weakest "
+       f"association occurs when {w.short} is taken into account.")
+    return fig, cap
+
+# NFHS-5 Phase 1 states: surveyed from June 2019 to January 2020 before COVID-19 hit
+PHASE1 = ["Andhra Pradesh", "Assam", "Bihar", "Goa", "Gujarat", "Himachal Pradesh", "Jammu and Kashmir",
+          "Karnataka", "Kerala", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Sikkim",
+          "Telangana", "Tripura", "West Bengal"]
+SENSITIVITY_KEYS = ["outcome_idx", "care_idx", "imr", "u5mr", "stunt", "anaem_child", "anaem_preg", "inst", "vacc", "oop"]
+
+def sensitivity(b, sel):
+    """Signed ρ for key indicators: all states vs without the six NE states vs pre-COVID (Phase 1) states only."""
+    t = b.total
+    groups = [("all", "All 29 states", t, SERIES_A, "circle"),
+              ("wo", f"Without the 6 north-eastern states ({int((~t.flagged_ne).sum())})", t[~t.flagged_ne],
+               SERIES_B, "diamond"),
+              ("p1", f"Surveyed before COVID only ({int(t.State.isin(PHASE1).sum())})", t[t.State.isin(PHASE1)],
+               TEXT, "square-open")]
+    rows = []
+    for k in SENSITIVITY_KEYS:
+        row = dict(key=k, label=label_any(k))
+        for g, _, d, _, _ in groups:
+            sp = D.spearman(d.pc, d[k])
+            row[g], row["p_" + g] = sp["r"] * better_any(k), sp["p"]
+        rows.append(row)
+    r = pd.DataFrame(rows)[::-1].reset_index(drop=True)
+    fig = go.Figure()
+    xs, ys = [], []
+    for _, x in r.iterrows():
+        lo, hi = min(x["all"], x["wo"], x["p1"]), max(x["all"], x["wo"], x["p1"])
+        xs += [lo, hi, None]
+        ys += [x.label, x.label, None]
+    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=AXIS, width=3), hoverinfo="skip",
+                             showlegend=False))
+    for g, name, _, col, sym in groups:
+        fig.add_trace(go.Scatter(
+            x=r[g], y=r.label, mode="markers", name=name,
+            marker=dict(size=12, color=col, symbol=sym, line=dict(color=CARD if "open" not in sym else col, width=1.5)),
+            customdata=r["p_" + g].map(fmt_p),
+            hovertemplate="<b>%{y}</b><br>" + name + ": ρ = %{x:+.2f}, %{customdata}<extra></extra>"))
+    fig.add_vline(x=0, line=dict(color=AXIS, width=1.5))
+    fig.add_annotation(x=0.01, y=1.0, xref="paper", yref="paper", xanchor="left", yanchor="bottom", showarrow=False,
+                       text="◀ worse with more spending", font=dict(size=11, color=FAINT))
+    fig.add_annotation(x=0.99, y=1.0, xref="paper", yref="paper", xanchor="right", yanchor="bottom", showarrow=False,
+                       text="better with more spending ▶", font=dict(size=11, color=FAINT))
+    base_layout(fig, "Do unusual states or COVID change the result?",
+                "Spearman ρ between spending and each indicator, recalculated on three groups of states",
+                height=600, margin=dict(l=200))
+    fig.update_xaxes(range=[-1, 1], dtick=0.25, tickformat="+.2f", title_text="Spearman ρ (+ = better with more spending)")
+    fig.update_yaxes(tickfont=dict(family=FONT, size=11.5, color=SUBTLE), gridcolor="rgba(0,0,0,0)")
+    # Plain-language caption
+    o = r[r.key == "outcome_idx"].iloc[0]
+    c = r[r.key == "care_idx"].iloc[0]
+    held = [g for g in ("wo", "p1") if o[g] > 0 and _sig(o["p_" + g])]
+    n_p1 = int(t.State.isin(PHASE1).sum())
+    cap = (f"The main result is not driven by a few unusual states or by the pandemic: higher spending goes with "
+           f"healthier mothers and children in all three groups (ρ = {o['all']:+.2f} for all states, "
+           f"{o['wo']:+.2f} without the north-east and {o['p1']:+.2f} for the {n_p1} states surveyed before COVID)"
+           + ("." if len(held) == 2 else ", although the smaller groups make it less certain."))
+    if c["wo"] - c["all"] > 0.3:
+        cap += (f" Care, on the other hand, behaves differently: once the north-east is left out, higher spending does go with more "
+                f"care (ρ = {c['all']:+.2f} → {c['wo']:+.2f}), likely because those states spend a lot but have "
+                f"low use of hospitals and clinics.")
+    return fig, cap
+
+def oop_scatter(b, sel):
+    """What families pay per delivery in a public facility vs what the state spends per capita."""
+    t = b.total.dropna(subset=["oop"])
+    s = D.spearman(t.pc, t.oop)
+    fig = go.Figure()
+    hov = (np.stack([t.State, t.pc.map(inr), t.oop.map(inr)], axis=1),
+           "<b>%{customdata[0]}</b><br>State spends %{customdata[1]} per capita"
+           "<br>Family pays %{customdata[2]} per delivery<extra></extra>")
+    _scatter_regions(fig, t, "pc", "oop", hover=hov, base=13)
+    sl, ic = D.log_fit(t.pc, t.oop)
+    xs = np.logspace(np.log10(t.pc.min() * 0.92), np.log10(t.pc.max() * 1.08), 40)
+    fig.add_trace(go.Scatter(x=xs, y=ic + sl * np.log10(xs), mode="lines", name="Trend",
+                             line=dict(color=TEXT if _sig(s["p"]) else NEUTRAL,
+                                       dash="solid" if _sig(s["p"]) else "dot", width=2), hoverinfo="skip"))
+    _label_points(fig, t, "pc", "oop",
+                  [x for x in list(t.nlargest(3, "oop").State) + list(t.nsmallest(1, "oop").State) if x != sel],
+                  logx=True)
+    if sel in set(t.State):
+        r = t[t.State == sel].iloc[0]
+        _highlight_point(fig, r.pc, r.oop, sel, size=20)
+    title = ("Families pay more per delivery where states spend more" if s["r"] > 0
+             else "Families pay less per delivery where states spend more")
+    base_layout(fig, title,
+                "Average out-of-pocket cost of a delivery in a public facility vs state health spending per capita",
+                height=600)
+    _log_axis(fig)
+    fig.update_yaxes(title_text="Out-of-pocket cost per delivery (₹)", tickprefix="₹", tickformat=",")
+    w = D.spearman(t[~t.flagged_ne].pc, t[~t.flagged_ne].oop)
+    top, low = t.loc[t.oop.idxmax()], t.loc[t.oop.idxmin()]
+    expected = s["r"] < 0
+    cap = (f"One might expect families to pay less where the state spends more, "
+           f"{'and that is what happens' if expected else 'but the opposite happens'} "
+           f"(ρ = {s['r']:+.2f}, {fmt_p(s['p'])}): a delivery in a public facility costs families "
+           f"{inr(low.oop)} in {low.State} but {inr(top.oop)} in {top.State}. "
+           f"{'This still holds' if _sig(w['p']) and np.sign(w['r']) == np.sign(s['r']) else 'This weakens'} "
+           f"without the north-eastern states (ρ = {w['r']:+.2f}). A possible reason is that care costs more in "
+           f"remote and hilly states, although this claim cannot be backed up by the available data.")
+    return fig, cap

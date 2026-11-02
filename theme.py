@@ -1,9 +1,9 @@
-"""Theme For The Dashboard"""
+"""Theme For The Dashboard: Colours, Fonts and Layout"""
 
 import textwrap
 import plotly.graph_objects as go
 
-BG = "#070A0F"
+BG = "#000000"
 CARD = "#171A26"
 GRID = "#232A37"
 AXIS = "#3A4354"
@@ -39,8 +39,11 @@ REGION_SYMBOLS = {
 }
 
 # Colour Scales
-SEQ = "Viridis"
-SEQ_ALT = "Cividis"
+SEQ = ["#46039f", "#7201a8", "#9c179e", "#bd3786", "#d8576b",
+       "#ed7953", "#fb9f3a", "#fdca26", "#f0f921"]
+SEQ_ALT = ["#575d6d", "#707173", "#8a8678", "#a59c74", "#c3b369", "#e1cc55", "#fee838"]
+SEQ_COUNT = ["#6b1cfb", "#981cfd", "#bf1cfd", "#dd2bfd", "#f246fe", "#fc67fd", "#fea5fd"]
+SEQ_SCORE = "Viridis"
 
 # Fonts
 FONT = "Inter, system-ui, sans-serif"
@@ -57,6 +60,7 @@ def base_layout(
     margin=None,
     wrap: int = 96,
 ) -> go.Figure:
+    """Title and wrapped subtitle at the top left with legend in its own band under them"""
     t = f"<b>{title}</b>"
     lines = textwrap.wrap(subtitle, wrap) if subtitle else []
     for ln in lines:
@@ -80,7 +84,7 @@ def base_layout(
             yanchor="top",
             yref="container",
             font=dict(family=FONT_DISPLAY, size=17, color=TEXT),
-            pad=dict(l=6, t=12),
+            pad=dict(l=6, t=16),
         ),
         height=height,
         margin=m,
@@ -132,6 +136,7 @@ def base_layout(
 
 
 def region_legend_traces(fig, regions, row=None, col=None):
+    """Adds legend only entries (colour and symbol) for each region"""
     for r in regions:
         tr = go.Scatter(
             x=[None],

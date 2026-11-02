@@ -10,3 +10,5 @@ __pycache__/
 
 # Local test files
 try_theme.py
+try_figures.py
+preview.html

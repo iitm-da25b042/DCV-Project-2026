@@ -16,7 +16,7 @@ from sklearn.preprocessing import StandardScaler
 
 # Paths and constants
 HERE = Path(__file__).parent
-RAW_PATH = HERE / "data" / "raw" / "budget_nfhs_combined.csv"
+RAW_PATH = HERE / "data" / "interim" / "budget_nfhs_combined.csv"
 CLEAN_PATH = HERE / "data" / "clean" / "budget_nfhs_combined_clean.csv"
 GEOJSON_PATH = HERE / "data" / "geo" / "india_states.geojson"
 

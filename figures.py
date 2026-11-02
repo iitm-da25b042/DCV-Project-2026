@@ -1217,9 +1217,9 @@ def rural_urban(b, sel, ind="imr"):
             f"Increased spending does not clearly narrow the rural-urban gap ({_rho_text(s)}). The extra money is not "
             f"obviously reaching mothers and children in rural areas first."
         )
-        better_rural = [
-            st for st in states if worse_gap[st] > 0
-        ]  # states where rural does better
+    better_rural = [
+        st for st in states if worse_gap[st] > 0
+    ]  # states where rural does better
     if 1 <= len(better_rural) <= 3:
         names = " and ".join(
             [", ".join(better_rural[:-1]), better_rural[-1]]

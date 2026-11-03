@@ -280,9 +280,9 @@ def tab_kpis(b, tab):
                 "health outcomes improve significantly with spending",
             ),
             _card(
-                "Best value for money",
+                "Furthest above the prediction",
                 star,
-                f"{gap.max():+.0f} points above what its spending predicts",
+                f"{gap.max():+.0f} points above the Outcome Index predicted by its spending",
             ),
         ]
     if tab == 4:
@@ -995,7 +995,8 @@ def split_heatmap(b, sel, part="Outcomes"):
                     line=dict(color=colour, width=width),
                 )
     mean = np.hstack(all_scores).mean(axis=1)
-    s = D.spearman(t.pc, mean)
+    index = t.outcome_idx if part == "Outcomes" else t.care_idx
+    s = D.spearman(t.pc, index)
     title = (
         "Health outcomes: States at the top with higher expenditure show better performance"
         if part == "Outcomes"
@@ -1023,8 +1024,9 @@ def split_heatmap(b, sel, part="Outcomes"):
     top, bot = mean[:third].mean(), mean[-third:].mean()
     n_ind = sum(len(k) for _, k, _ in groups)
     what = "health outcomes" if part == "Outcomes" else "care indicators"
+    idx_name = "the Outcome Index" if part == "Outcomes" else "the Care Index"
     r = s["r"]
-    stats_txt = f"Spearman's ρ = {r:.2f}, {fmt_p(s['p'])}, n = {s['n']}"
+    stats_txt = f"Spearman's ρ = {r:+.2f}, {fmt_p(s['p'])}, n = {s['n']}"
     if _sig(s["p"]):
         strength = (
             "strong" if abs(r) >= 0.7 else "moderate" if abs(r) >= 0.4 else "weak"
@@ -1032,10 +1034,10 @@ def split_heatmap(b, sel, part="Outcomes"):
         direction = "positive" if r > 0 else "negative"
         second = (
             f"This difference is backed by a {strength} {direction} correlation between "
-            f"spending and {what} ({stats_txt})."
+            f"spending and {idx_name} ({stats_txt})."
         )
     else:
-        second = f"There is no significant correlation between spending and {what} ({stats_txt})."
+        second = f"There is no significant correlation between spending and {idx_name} ({stats_txt})."
     cap = (
         f"Across the {n_ind} {what}, the highest-spending third of states averaged {top:.0f}/100, "
         f"compared to {bot:.0f}/100 for the lowest-spending third. {second}"
@@ -1938,7 +1940,7 @@ def value_for_money(b, sel):
     fig.add_vline(x=0, line=dict(color=AXIS, width=1.5))
     base_layout(
         fig,
-        "Health per rupee: who does better or worse than their spending predicts",
+        "Who does better or worse than their spending predicts",
         "Actual Outcome Index minus the value expected from the state's spending (trend line) · points",
         height=760,
         margin=dict(l=150),
@@ -1959,9 +1961,9 @@ def value_for_money(b, sel):
     top, bot = t.iloc[-1], t.iloc[0]
     cap = (
         f"{top.State} does {top.gap:.0f} points better than its spending of {inr(top.pc)} per capita would "
-        f"predict, the best value for money of any state, while {bot.State} does {abs(bot.gap):.0f} points worse "
-        f"than expected on {inr(bot.pc)}. {int(better.sum())} of {len(t)} states beat their prediction. How "
-        f"well money is used matters as well as how much is spent."
+        f"predict, the furthest above the expected value for any state, while {bot.State} does {abs(bot.gap):.0f} points worse "
+        f"than expected on {inr(bot.pc)}. {int(better.sum())} of {len(t)} states beat their prediction. Spending "
+        f"alone does not determine outcomes."
     )
     return fig, cap
 
@@ -2957,7 +2959,7 @@ def findings(b):
         dict(
             title="Higher spending does not necessarily mean greater healthcare utilisation",
             body=f"The Care Index shows no clear association with spending (ρ = {sc['r']:+.2f}, "
-            f"{fmt_p(sc['p'])}). Only {n_care} of {tot_care} care indicators show a significant "
+            f"{fmt_p(sc['p'])}). Only {n_care} of {tot_care} care indicators {'shows' if n_care == 1 else 'show'} a significant "
             f"positive association. Excluding the six north-eastern states reveals a positive "
             f"association (ρ = {care_wo['r']:+.2f}).",
             tab="Tabs 3 and 4",
@@ -3111,7 +3113,9 @@ def methods(b):
             f"favourable outcomes. Indicators where lower values are preferable were reverse-scaled. "
             f"The Outcome Index averages {len(D.OUTCOME_INDEX)} indicators covering mortality, "
             f"nutrition and anaemia. The Care Index averages {len(D.CARE_INDEX)} indicators covering "
-            f"maternal care and child healthcare utilisation.",
+            f"maternal care and child healthcare utilisation. The heatmaps and correlation chart show a "
+            f"wider set of individual indicators (10 outcomes and 9 care indicators). The two indices use "
+            f"only their core subset.",
         ),
         (
             "Statistical analysis",

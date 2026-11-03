@@ -29,6 +29,11 @@ python app.py        # Open http://127.0.0.1:8050, stop with Ctrl+C
 | `export_static.py`, `docs/index.html` | Static copy of the dashboard, published with GitHub Pages |
 | `data/geo/`, `tools/` | State map file and the script used to build it |
 | `screenshots/` | Screenshots of dashboard charts |
+| `report.pdf` | Project report |
+| `data_dictionary.pdf` | Column names, types, units, sources and allowed ranges of the cleaned data |
+| `cleaning_log.pdf` | Cleaning steps and their outcomes |
+| `contribution.pdf` | Contributions of each team member |
+| `ai_use.pdf` | Use of AI tools |
 
 ## Data sources
 

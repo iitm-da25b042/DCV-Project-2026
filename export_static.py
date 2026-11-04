@@ -110,6 +110,7 @@ page = f"""<!doctype html>
 <header class="header"><div class="title-block">
 <h1>Does spending more on health buy better maternal and child health?</h1>
 <p class="subtitle">{len(b.total)} Indian states · State health expenditure 2019-20 (RBI) and NFHS-5 (2019-21)</p>
+<p class="authors">H Sanjana Bhat · Bhavana B · Bolleddula Eshita</p>
 <p class="static-note">This is the static version, with hover and zoom working on all charts. For the state selector and chart controls,
 run the Dash app (python app.py).</p>
 </div></header>

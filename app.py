@@ -197,7 +197,9 @@ app.layout = html.Div(className="page", children=[
             html.H1("Does spending more on health buy better maternal and child health?"),
             html.P(f"{len(B.total)} Indian states · State health expenditure 2019-20 (RBI) and NFHS-5 (2019-21)",
                    className="subtitle"),
-        ]),
+            html.P("H Sanjana Bhat · Bhavana B · Bolleddula Eshita",
+                   className="authors"),
+            ]),
         html.Div(className="control", children=[
             html.Label("Highlight a state", htmlFor="state", className="control-label"),
             dcc.Dropdown(id="state", options=STATES, value=None, clearable=True, placeholder="Choose a state",

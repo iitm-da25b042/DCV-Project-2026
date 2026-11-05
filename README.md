@@ -18,7 +18,7 @@ python app.py        # Open http://127.0.0.1:8050, stop with Ctrl+C
 | Path | Description |
 |---|---|
 | `data/raw/` | Original downloaded files: RBI State Finances (Excel), NFHS-5 state indicators (CSV), NHM population projections (PDF) |
-| `data/interim/budget_nfhs_combined.csv` | Spending, population and NFHS-5 indicators combined into one file, before cleaning |
+| `data/interim/budget_nfhs_combined.csv` | Spending, population and NFHS-5 indicators combined into one csv file, before cleaning |
 | `data/clean/budget_nfhs_combined_clean.csv` | Cleaned file used by the dashboard |
 | `data_cleaning.ipynb` | Data cleaning on interim file -> cleaned file |
 | `data_visualisation.ipynb` | All dashboard charts with their captions |
